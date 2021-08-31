@@ -10,7 +10,9 @@ interface IStickyOptions {
 
 interface IStickyPairWithOptions extends IStickyPair {
   options: IStickyOptions;
-  observer: MutationObserver | null;
+  elementTop: number;
+  mutationObserver: MutationObserver | null;
+  resizeObserver: ResizeObserver | null;
 }
 
 const store: {
@@ -21,16 +23,22 @@ const store: {
 
 const update = (pair: IStickyPairWithOptions) => {
   const containerRect = pair.container.getBoundingClientRect();
+  const elementRect = pair.element.getBoundingClientRect();
 
-  if (containerRect.top < pair.options.offsetTop) {
-    const top = Math.min(
-      Math.abs(containerRect.top - pair.options.offsetTop),
-      containerRect.height -
-        pair.element.clientHeight -
-        pair.options.offsetBottom,
+  if (containerRect.top + pair.elementTop < pair.options.offsetTop) {
+    const top = Math.abs(
+      containerRect.top + pair.elementTop - pair.options.offsetTop,
     );
 
-    pair.element.style.setProperty("top", `${top}px`);
+    const maxOffset =
+      containerRect.height -
+      elementRect.height -
+      pair.elementTop -
+      pair.options.offsetBottom;
+
+    const offset = Math.min(top, maxOffset);
+
+    pair.element.style.setProperty("top", `${offset}px`);
   } else {
     pair.element.style.removeProperty("top");
   }
@@ -44,18 +52,24 @@ const create = (
   },
 ) => {
   if (store.stickyPair.some((p) => p.element === pair.element) === false) {
+    const containerRect = pair.container.getBoundingClientRect();
+    const elementRect = pair.element.getBoundingClientRect();
+
     const pairWithOptions: IStickyPairWithOptions = {
       ...pair,
       options,
-      observer: null,
+      elementTop: elementRect.top - containerRect.top,
+      mutationObserver: null,
+      resizeObserver: null,
     };
+
     store.stickyPair.push(pairWithOptions);
 
-    pairWithOptions.observer = new MutationObserver(() => {
+    pairWithOptions.mutationObserver = new MutationObserver(() => {
       update(pairWithOptions);
     });
 
-    pairWithOptions.observer.observe(pairWithOptions.container, {
+    pairWithOptions.mutationObserver.observe(pairWithOptions.container, {
       childList: true,
       subtree: true,
     });
@@ -74,7 +88,7 @@ const destroy = (pair: IStickyPair) => {
   const found = store.stickyPair.find((p) => p.element === pair.element);
 
   if (found) {
-    found.observer?.disconnect();
+    found.mutationObserver?.disconnect();
     found.element.style.removeProperty("position");
     found.element.style.removeProperty("top");
     store.stickyPair = store.stickyPair.filter(
